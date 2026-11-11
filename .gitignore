@@ -1,0 +1,29 @@
+# Compiled binaries & build artifacts
+/vimlearn
+**/*.exe
+**/*.exe~
+*.dll
+*.so
+*.dylib
+/dist/
+/bin/
+/out/
+
+# Go test & coverage outputs
+*.test
+*.out
+coverage.*
+
+# Editor & IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS metadata & local files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.env
+*.log
