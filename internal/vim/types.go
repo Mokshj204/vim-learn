@@ -109,6 +109,7 @@ type Engine struct {
 	QuitRequested  bool
 	SaveRequested  bool
 	ResetRequested bool
+	HelpRequested  bool
 }
 
 // NewEngine initializes a Vim engine with the given initial lines and cursor position.

@@ -2,12 +2,14 @@ package game
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"strings"
 	"testing"
 
 	"vimlearn/internal/levels"
 	"vimlearn/internal/term"
+	"vimlearn/internal/updater"
 	"vimlearn/internal/vim"
 )
 
@@ -255,4 +257,89 @@ func TestEndlessModeFlow(t *testing.T) {
 
 func vimKeys(seq string) []term.KeyEvent {
 	return vim.ParseKeySequence(seq)
+}
+
+func TestInAppUpdatePrompt(t *testing.T) {
+	mt := newMockTerm()
+	app := NewApp(mt)
+	info := &updater.ReleaseInfo{
+		CurrentVersion: "v1.0.0",
+		LatestVersion:  "v1.1.0",
+		AssetName:      "vimlearn-linux-amd64",
+		DownloadURL:    "http://example.invalid/bin",
+	}
+
+	// Render shows update prompt with [Y] Yes / [N] No
+	app.pendingUpdate = info
+	out := app.render()
+	if !strings.Contains(out, "Update available: v1.0.0 -> v1.1.0") || !strings.Contains(out, "[Y] Yes") {
+		t.Fatalf("expected update prompt on Home screen, got %q", out)
+	}
+
+	// Pressing 'n' dismisses prompt
+	app.handleEvent(term.KeyEvent{Kind: term.KeyRune, Rune: 'n'})
+	if app.pendingUpdate != nil {
+		t.Fatalf("expected 'n' to dismiss pendingUpdate")
+	}
+
+	// Pressing 'y' runs applyUpdateFn
+	called := make(chan struct{}, 1)
+	app.pendingUpdate = info
+	app.updateResultCh = make(chan error, 1)
+	app.applyUpdateFn = func(ctx context.Context, got *updater.ReleaseInfo) error {
+		called <- struct{}{}
+		return nil
+	}
+	app.handleEvent(term.KeyEvent{Kind: term.KeyRune, Rune: 'y'})
+	<-called
+	err := <-app.updateResultCh
+	if err != nil {
+		t.Fatalf("expected nil update err, got %v", err)
+	}
+	app.updateBusy = false
+	app.updateDone = true
+	app.updateSuccess = true
+	app.updateStatus = "Updated to v1.1.0! Press any key to exit and relaunch vimlearn."
+
+	if !strings.Contains(app.render(), "Updated to v1.1.0") {
+		t.Fatalf("expected updated status banner")
+	}
+	if quit := app.handleEvent(term.KeyEvent{Kind: term.KeyEnter}); !quit {
+		t.Fatalf("expected keypress after successful update to exit cleanly")
+	}
+}
+
+func TestHelpOverlayAndCommand(t *testing.T) {
+	mt := newMockTerm()
+	app := NewApp(mt)
+
+	// Press '?' on Home -> opens ScreenHelp -> 'Esc' returns to ScreenHome
+	app.handleEvent(term.KeyEvent{Kind: term.KeyRune, Rune: '?'})
+	if app.screen != ScreenHelp {
+		t.Fatalf("expected ScreenHelp on '?', got %v", app.screen)
+	}
+	if out := app.render(); !strings.Contains(out, "VIMLEARN HELP") || !strings.Contains(out, "man vimlearn") {
+		t.Fatalf("help screen missing expected content")
+	}
+	app.handleEvent(term.KeyEvent{Kind: term.KeyEsc})
+	if app.screen != ScreenHome {
+		t.Fatalf("expected return to ScreenHome, got %v", app.screen)
+	}
+
+	// Open a level, make an edit, run :help, and verify buffer is preserved on return
+	if err := app.OpenLevel(levels.DiffBeginner, 3); err != nil {
+		t.Fatal(err)
+	}
+	app.handleEvent(term.KeyEvent{Kind: term.KeyRune, Rune: 'x'})
+	editedText := app.eng.Text()
+	for _, ev := range vimKeys(":help<CR>") {
+		app.handleEvent(ev)
+	}
+	if app.screen != ScreenHelp {
+		t.Fatalf("expected :help to open ScreenHelp, got %v", app.screen)
+	}
+	app.handleEvent(term.KeyEvent{Kind: term.KeyRune, Rune: 'q'})
+	if app.screen != ScreenPlay || app.eng.Text() != editedText {
+		t.Fatalf("expected return to ScreenPlay with buffer preserved")
+	}
 }

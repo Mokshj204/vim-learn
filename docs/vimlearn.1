@@ -1,0 +1,131 @@
+.TH VIMLEARN 1 "2026-11-11" "vimlearn" "User Commands"
+.SH NAME
+vimlearn \- interactive ANSI terminal game for learning Vim keybindings
+.SH SYNOPSIS
+.B vimlearn
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B vimlearn
+is a cross-platform ANSI terminal puzzle and muscle-memory trainer for Vim keybindings.
+It provides an interactive Vim primer tutorial, 25 handcrafted levels across five difficulty
+tiers, and an Endless muscle-memory mode with four procedural training modes.
+.PP
+A minimum terminal size of
+.B 80x24
+is required to start and play.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show command-line usage and exit.
+.TP
+.B \-\-tutorial
+Launch directly into the 4-part interactive Vim Primer Tutorial.
+.TP
+.B \-\-list
+List all difficulties, levels, Par scores, and objectives.
+.TP
+.BI "\-\-play " "difficulty level"
+Start a specific difficulty and 1-based level number (for example:
+.BR "--play hard 2" ).
+.TP
+.BI "\-\-endless " "difficulty " [ mode ]
+Start Endless muscle-memory mode for
+.I difficulty
+using an optional sub-mode:
+.BR random " (default), " multi ", " hunt ", or " rapid .
+.TP
+.B \-\-update
+Check GitHub Releases for a newer release and install it.
+.TP
+.B \-\-man
+Print the raw troff manual page to standard output (pipe to
+.BR "man -l -" ).
+.TP
+.B \-\-version
+Print the installed version and exit.
+.SH DIFFICULTIES
+.TP
+.B beginner
+Foundations:
+.BR h ", " j ", " k ", " l ", " w ", " b ", " x ", " i ", " a ", " o ", " dd ", " u .
+.TP
+.B intermediate
+Line anchors, character sniping, and repeat:
+.BR 0 ", " ^ ", " $ ", " I ", " A ", " f ", " t ", " ; ", " dw ", " cw ", " yy ", " p ", " . .
+.TP
+.B hard
+Counts, text objects, and search:
+.BR 3j ", " 3dd ", " ci\(dq ", " da\(dq ", " ci( ", " di[ ", " gg ", " G ", " % ", " J ", " / ", " n ", " N .
+.TP
+.B expert
+Surgical refactoring:
+.BR v ", " V ", " ~ ", " r ", " ct) ", " dt) ", " ci{ ", " >> ", " << ", " ma ", " \(gaa .
+.TP
+.B impossible
+Timed Vim Grandmaster challenges: macros
+.RB ( qa ... q ", " @a ),
+named registers
+.RB ( \(dqay ", " \(dqap ),
+nested text objects, and search-and-dot blitzes.
+.SH ENDLESS MODES
+Press
+.B e
+on any difficulty in the Home or Level Select screen to choose a training mode:
+.TP
+.B random
+Alternates between Multi-Edit Mix, Code Hunt, and Rapid-Fire every round using an anti-repeat bag.
+.TP
+.B multi
+Composable multi-step edits across realistic code and configuration snippets with streak escalation.
+.TP
+.B hunt
+High-speed cursor navigation across highlighted tokens inside real code snippets.
+.TP
+.B rapid
+Continuous Monkeytype-style micro-drills on a live buffer with Keys/sec tracking.
+.SH CONTROLS
+.SS Menus
+.TP
+.BR j / k " or " Up / Down
+Move selection.
+.TP
+.B Enter
+Open selected difficulty or start selected level.
+.TP
+.B e
+Open Endless Mode picker for the selected difficulty.
+.TP
+.B t
+Open the Vim Primer Tutorial.
+.TP
+.B ?
+Open the in-app Help & Controls overlay.
+.TP
+.BR Esc " or " q
+Go back / quit.
+.SS Gameplay (Inside Levels & Endless Mode)
+.TP
+.B Tab
+Expand or collapse the full lesson and key hints panel (Normal mode).
+.TP
+.B Ctrl+L
+Toggle the step-by-step walkthrough and hint.
+.TP
+.B :help
+Open the Help & Controls overlay without losing your buffer progress.
+.TP
+.B :reset
+Restart the current level.
+.TP
+.B :q
+Exit the current level or stop Endless Mode.
+.SH FILES
+.TP
+.I ~/.config/vimlearn/progress.json
+Stores completed levels, best keystroke scores, star ratings, and Endless mode streaks.
+.TP
+.I ~/.local/share/man/man1/vimlearn.1
+Manual page installed by
+.BR install.sh .
+.SH SEE ALSO
+.BR vim (1)

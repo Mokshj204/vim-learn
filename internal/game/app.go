@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -9,6 +10,7 @@ import (
 	"vimlearn/internal/levels"
 	"vimlearn/internal/store"
 	"vimlearn/internal/term"
+	"vimlearn/internal/updater"
 	"vimlearn/internal/vim"
 )
 
@@ -26,6 +28,7 @@ const (
 	ScreenTutorial
 	ScreenLevels
 	ScreenEndlessMenu
+	ScreenHelp
 	ScreenPlay
 	ScreenWin
 	ScreenTimeout
@@ -36,12 +39,13 @@ type App struct {
 	term     term.Terminal
 	progress *store.Progress
 
-	screen         Screen
-	homeIdx        int // 0 = Tutorial, 1..5 = Difficulties
-	tutIdx         int
-	selDiff        levels.DifficultyID
-	levelIdx       int
-	endlessMenuIdx int
+	screen           Screen
+	helpReturnScreen Screen
+	homeIdx          int // 0 = Tutorial, 1..5 = Difficulties
+	tutIdx           int
+	selDiff          levels.DifficultyID
+	levelIdx         int
+	endlessMenuIdx   int
 
 	currentLevel  levels.Level
 	eng           *vim.Engine
@@ -62,17 +66,26 @@ type App struct {
 	rapidTotalKeys      int
 	rapidStart          time.Time
 	rng                 *rand.Rand
+
+	pendingUpdate  *updater.ReleaseInfo
+	updateBusy     bool
+	updateStatus   string
+	updateDone     bool
+	updateSuccess  bool
+	updateResultCh chan error
+	applyUpdateFn  func(context.Context, *updater.ReleaseInfo) error
 }
 
 // NewApp constructs a new game application.
 func NewApp(t term.Terminal) *App {
 	return &App{
-		term:     t,
-		progress: store.Load(),
-		screen:   ScreenHome,
-		homeIdx:  1,
-		selDiff:  levels.DiffBeginner,
-		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
+		term:          t,
+		progress:      store.Load(),
+		screen:        ScreenHome,
+		homeIdx:       1,
+		selDiff:       levels.DiffBeginner,
+		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
+		applyUpdateFn: updater.Apply,
 	}
 }
 
@@ -220,6 +233,8 @@ type keyMsg struct {
 
 // Run enters raw ANSI terminal mode and runs the interactive game loop.
 func (a *App) Run() error {
+	updater.CleanupOldBinary()
+
 	if cols, rows, err := a.term.Size(); err == nil && (cols < MinCols || rows < MinRows) {
 		return fmt.Errorf("terminal size %dx%d is too small; minimum required is %dx%d — please resize your terminal and try again", cols, rows, MinCols, MinRows)
 	}
@@ -246,6 +261,9 @@ func (a *App) Run() error {
 		}
 	}()
 
+	updateCh := updater.CheckLatestAsync()
+	a.updateResultCh = make(chan error, 1)
+
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -265,6 +283,25 @@ func (a *App) Run() error {
 			}
 			a.draw()
 
+		case info, ok := <-updateCh:
+			updateCh = nil
+			if ok && info != nil {
+				a.pendingUpdate = info
+				a.draw()
+			}
+
+		case err := <-a.updateResultCh:
+			a.updateBusy = false
+			a.updateDone = true
+			if err != nil {
+				a.updateSuccess = false
+				a.updateStatus = fmt.Sprintf("Update failed: %v (press any key to continue)", err)
+			} else {
+				a.updateSuccess = true
+				a.updateStatus = fmt.Sprintf("Updated to %s! Press any key to exit and relaunch vimlearn.", a.pendingUpdate.LatestVersion)
+			}
+			a.draw()
+
 		case <-a.term.ResizeNotify():
 			a.draw()
 
@@ -277,6 +314,29 @@ func (a *App) Run() error {
 			}
 		}
 	}
+}
+
+func (a *App) startSelfUpdate() {
+	if a.pendingUpdate == nil || a.updateBusy {
+		return
+	}
+	a.updateBusy = true
+	a.updateDone = false
+	a.updateSuccess = false
+	a.updateStatus = fmt.Sprintf("Downloading %s...", a.pendingUpdate.LatestVersion)
+	info := a.pendingUpdate
+	fn := a.applyUpdateFn
+	if fn == nil {
+		fn = updater.Apply
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err := fn(ctx, info)
+		if a.updateResultCh != nil {
+			a.updateResultCh <- err
+		}
+	}()
 }
 
 func (a *App) draw() {
@@ -304,6 +364,8 @@ func (a *App) handleEvent(ev term.KeyEvent) (quit bool) {
 		a.handleLevelSelectKey(ev)
 	case ScreenEndlessMenu:
 		a.handleEndlessMenuKey(ev)
+	case ScreenHelp:
+		a.handleHelpKey(ev)
 	case ScreenPlay:
 		a.handlePlayKey(ev)
 	case ScreenWin:
@@ -315,6 +377,29 @@ func (a *App) handleEvent(ev term.KeyEvent) (quit bool) {
 }
 
 func (a *App) handleHomeKey(ev term.KeyEvent) bool {
+	if a.updateBusy {
+		return ev.Kind == term.KeyCtrl && ev.Ctrl == 'c'
+	}
+	if a.updateDone {
+		if a.updateSuccess {
+			return true
+		}
+		a.updateDone = false
+		a.updateStatus = ""
+		a.pendingUpdate = nil
+		return false
+	}
+	if a.pendingUpdate != nil && ev.Kind == term.KeyRune {
+		switch ev.Rune {
+		case 'y', 'Y':
+			a.startSelfUpdate()
+			return false
+		case 'n', 'N':
+			a.pendingUpdate = nil
+			return false
+		}
+	}
+
 	maxIdx := len(levels.Difficulties()) // 0 = tutorial, 1..5 = difficulties
 	switch ev.Kind {
 	case term.KeyUp:
@@ -342,6 +427,8 @@ func (a *App) handleHomeKey(ev term.KeyEvent) bool {
 		switch ev.Rune {
 		case 'q':
 			return true
+		case '?':
+			a.openHelp()
 		case 'k':
 			if a.homeIdx > 0 {
 				a.homeIdx--
@@ -392,6 +479,8 @@ func (a *App) handleTutorialKey(ev term.KeyEvent) {
 		switch ev.Rune {
 		case 'q', 'b':
 			a.screen = ScreenHome
+		case '?':
+			a.openHelp()
 		case 'h', 'k':
 			if a.tutIdx > 0 {
 				a.tutIdx--
@@ -435,6 +524,8 @@ func (a *App) handleLevelSelectKey(ev term.KeyEvent) {
 		switch ev.Rune {
 		case 'q', 'b':
 			a.screen = ScreenHome
+		case '?':
+			a.openHelp()
 		case 'k':
 			if a.levelIdx > 0 {
 				a.levelIdx--
@@ -484,6 +575,8 @@ func (a *App) handleEndlessMenuKey(ev term.KeyEvent) {
 		switch ev.Rune {
 		case 'q', 'b':
 			a.screen = ScreenLevels
+		case '?':
+			a.openHelp()
 		case 'k':
 			if a.endlessMenuIdx > 0 {
 				a.endlessMenuIdx--
@@ -498,6 +591,29 @@ func (a *App) handleEndlessMenuKey(ev term.KeyEvent) {
 				a.endlessMenuIdx = idx
 				_ = a.StartEndlessMode(a.selDiff, modes[idx].ID)
 			}
+		}
+	}
+}
+
+func (a *App) openHelp() {
+	if a.screen != ScreenHelp {
+		a.helpReturnScreen = a.screen
+		a.screen = ScreenHelp
+	}
+}
+
+func (a *App) handleHelpKey(ev term.KeyEvent) {
+	switch ev.Kind {
+	case term.KeyEsc, term.KeyEnter:
+		a.screen = a.helpReturnScreen
+	case term.KeyCtrl:
+		if ev.Ctrl == 'c' {
+			a.screen = a.helpReturnScreen
+		}
+	case term.KeyRune:
+		switch ev.Rune {
+		case 'q', 'b', '?':
+			a.screen = a.helpReturnScreen
 		}
 	}
 }
@@ -523,6 +639,11 @@ func (a *App) handlePlayKey(ev term.KeyEvent) {
 
 	a.eng.HandleKey(ev)
 
+	if a.eng.HelpRequested {
+		a.eng.HelpRequested = false
+		a.openHelp()
+		return
+	}
 	if a.eng.QuitRequested {
 		a.endlessMode = false
 		a.screen = ScreenLevels

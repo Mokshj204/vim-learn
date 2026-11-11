@@ -179,6 +179,9 @@ func (e *Engine) executeCommand(prefix rune, cmd string) {
 	case "e!", "reset":
 		e.ResetRequested = true
 		e.StatusMsg = "Level reset"
+	case "h", "help":
+		e.HelpRequested = true
+		e.StatusMsg = "Help"
 	default:
 		e.StatusMsg = "Unknown command: :" + trimmed
 	}

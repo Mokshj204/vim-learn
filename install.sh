@@ -45,6 +45,13 @@ fi
 chmod +x "$TMP_FILE"
 mv "$TMP_FILE" "${INSTALL_DIR}/${BIN_NAME}"
 
+MAN_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/man/man1"
+if mkdir -p "$MAN_DIR" 2>/dev/null; then
+  if "${INSTALL_DIR}/${BIN_NAME}" --man > "${MAN_DIR}/${BIN_NAME}.1" 2>/dev/null; then
+    echo "Installed man page to ${MAN_DIR}/${BIN_NAME}.1 (try: man ${BIN_NAME})"
+  fi
+fi
+
 echo "Installed ${BIN_NAME} to ${INSTALL_DIR}/${BIN_NAME}"
 case ":$PATH:" in
   *":${INSTALL_DIR}:"*)

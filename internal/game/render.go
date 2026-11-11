@@ -8,6 +8,7 @@ import (
 	"vimlearn/internal/levels"
 	"vimlearn/internal/store"
 	"vimlearn/internal/term"
+	"vimlearn/internal/updater"
 	"vimlearn/internal/vim"
 )
 
@@ -177,6 +178,8 @@ func (a *App) render() string {
 		a.renderLevelSelect(c)
 	case ScreenEndlessMenu:
 		a.renderEndlessMenu(c)
+	case ScreenHelp:
+		a.renderHelp(c)
 	case ScreenPlay, ScreenWin, ScreenTimeout:
 		a.renderPlay(c)
 	}
@@ -228,7 +231,7 @@ func (a *App) renderHome(c *screenCanvas) {
 		fmt.Sprintf("Progress: %d/%d  |  %d/%d ★", completed, len(allLevels), totalStars, len(allLevels)*3),
 	))
 	c.next("")
-	c.next(term.Bold + term.FgBrightCyan + "  ╦  ╦╦╔╦╗╦  ╔═╗╔═╗╦═╗╔╗╔   " + term.Reset + term.Dim + "POSIX & PowerShell ANSI Edition" + term.Reset)
+	c.next(term.Bold + term.FgBrightCyan + "  ╦  ╦╦╔╦╗╦  ╔═╗╔═╗╦═╗╔╗╔   " + term.Reset + term.Dim + "POSIX & PowerShell ANSI Edition · " + updater.Version + term.Reset)
 	c.next(term.Bold + term.FgCyan + "  ╚╗╔╝║║║║║  ║╣ ╠═╣╠╦╝║║║   " + term.Reset + term.FgBrightBlack + fmt.Sprintf("Terminal: %dx%d", cols, rows) + term.Reset)
 	c.next("")
 
@@ -296,9 +299,21 @@ func (a *App) renderHome(c *screenCanvas) {
 	endlessCallout := "[E] Press 'e' on any difficulty for Endless Muscle-Memory Mode (Random Mix, Multi-Edit, Code Hunt, Rapid-Fire)"
 	c.next("  " + term.Bold + term.Bg256(23) + term.FgBrightCyan + " ★ " + fitWidth(endlessCallout, boxW-3) + term.Reset)
 
+	if a.updateStatus != "" {
+		bg := term.Bg256(22)
+		if a.updateDone && !a.updateSuccess {
+			bg = term.BgRed
+		}
+		c.next("  " + term.Bold + bg + term.FgBrightWhite + " ⬆ " + fitWidth(a.updateStatus, boxW-3) + term.Reset)
+	} else if a.pendingUpdate != nil {
+		updMsg := fmt.Sprintf("Update available: %s -> %s! Download & install now?  [Y] Yes   [N] No",
+			a.pendingUpdate.CurrentVersion, a.pendingUpdate.LatestVersion)
+		c.next("  " + term.Bold + term.Bg256(58) + term.FgBrightYellow + " ⬆ " + fitWidth(updMsg, boxW-3) + term.Reset)
+	}
+
 	// Fill remaining space before footer
 	c.fillTo(rows)
-	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Open Difficulty   e: Endless Mode   1-5: Quick Jump   t: Tutorial   q: Quit"))
+	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Open Difficulty   e: Endless Mode   t: Tutorial   ?: Help   q: Quit"))
 }
 
 func (a *App) renderTutorial(c *screenCanvas) {
@@ -484,7 +499,76 @@ func (a *App) renderEndlessMenu(c *screenCanvas) {
 	c.next("  " + term.FgBrightCyan + boxBottom(boxW) + term.Reset)
 
 	c.fillTo(rows)
-	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Start Endless   1-4: Quick Launch   Esc/b: Back to Levels"))
+	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Start Endless   1-4: Quick Launch   ?: Help   Esc/b: Back to Levels"))
+}
+
+func (a *App) renderHelp(c *screenCanvas) {
+	cols, rows := c.cols, c.rows
+	c.next(renderTopBar(cols, "VIMLEARN HELP & KEYBINDINGS REFERENCE", "Press Esc, q, or ? to return"))
+	c.next("")
+
+	boxW := cols - 4
+	innerW := boxW - 4
+	sections := []struct {
+		heading string
+		items   [][2]string
+	}{
+		{
+			heading: "App & Gameplay Controls",
+			items: [][2]string{
+				{"Tab (Normal)", "Expand / collapse full lesson & key hints"},
+				{"Ctrl+L", "Toggle step-by-step Walkthrough and Hint"},
+				{":help", "Open this Help screen anytime (preserves buffer)"},
+				{":reset / :e!", "Restart the current level"},
+				{":q", "Exit current level or stop Endless Mode"},
+				{"Esc", "Return to Normal mode (from Insert / Visual / Command)"},
+			},
+		},
+		{
+			heading: "Essential Vim Motions & Operators",
+			items: [][2]string{
+				{"h j k l", "Move Left / Down / Up / Right"},
+				{"w / b / e", "Next word / Previous word / End of word"},
+				{"0 / ^ / $", "Col 0 / First non-blank / End of line"},
+				{"f<c> / t<c> ;", "Find <c> / Till <c> on line / Repeat"},
+				{"d / c / y", "Delete / Change / Yank (+ motion or text object)"},
+				{"ci\" / ci( / da\"", "Change inside quotes/parens, Delete around quotes"},
+				{"dd / yy / p / .", "Delete line / Yank line / Paste / Repeat last edit"},
+				{"u / Ctrl+R", "Undo / Redo"},
+				{"qa...q / @a", "Record macro 'a' / Replay macro 'a'"},
+			},
+		},
+		{
+			heading: "CLI & Man Page",
+			items: [][2]string{
+				{"vimlearn --help", "Show CLI flags (--tutorial, --play, --endless, --update)"},
+				{"man vimlearn", "View Linux/macOS manual page (or vimlearn --man | man -l -)"},
+			},
+		},
+	}
+
+	c.next("  " + term.FgBrightCyan + boxTop(boxW, "Quick Reference") + term.Reset)
+	for si, sec := range sections {
+		c.next("  │ " + term.Bold + term.FgBrightGreen + fitWidth(sec.heading, innerW) + term.Reset + " │")
+		for _, pair := range sec.items {
+			descW := innerW - 20
+			if descW < 10 {
+				descW = 10
+			}
+			line := fmt.Sprintf("  %s%-16s%s  %s", term.Bold+term.FgBrightYellow, fitWidth(pair[0], 16), term.Reset, fitWidth(pair[1], descW))
+			c.next("  │ " + line + " │")
+		}
+		if si < len(sections)-1 {
+			c.next("  │ " + strings.Repeat(" ", innerW) + " │")
+		}
+	}
+	for c.row < rows-2 {
+		c.next("  │ " + strings.Repeat(" ", innerW) + " │")
+	}
+	c.next("  " + term.FgBrightCyan + boxBottom(boxW) + term.Reset)
+
+	c.fillTo(rows)
+	c.putRow(rows, renderFooterBar(cols, "Esc / q / ? / Enter: Return to previous screen"))
 }
 
 func endlessModeLabel(m levels.EndlessMode) string {
@@ -643,9 +727,9 @@ func (a *App) renderPlay(c *screenCanvas) {
 		}
 	default:
 		if a.endlessMode {
-			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Keys   Ctrl+L: Hint   :reset: Restart Round   :q: Stop Endless Mode"))
+			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Keys   Ctrl+L: Hint   :help: Help   :reset: Restart   :q: Stop Endless"))
 		} else {
-			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Lesson/Keys   Ctrl+L: Walkthrough/Hint   :reset: Restart   :q: Level Select"))
+			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Lesson/Keys   Ctrl+L: Walkthrough/Hint   :help: Help   :reset: Restart   :q: Level Select"))
 		}
 	}
 	c.row = rows + 1

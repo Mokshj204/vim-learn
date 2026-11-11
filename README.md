@@ -40,6 +40,7 @@ vimlearn
 - **Choose Any Difficulty & Any Level**: Jump straight to any difficulty or level, view saved star ratings (`★★★`) and best keystroke counts, and replay for Par.
 - **Endless Muscle-Memory Mode (`[E]`)**: Pick any difficulty and choose from 4 training modes—**Random Mix** (rotates modes every round), **Multi-Edit Mix** (composable multi-step code edits), **Code Hunt** (fast navigation across real code landmarks), or **Rapid-Fire Chain** (Monkeytype-style continuous micro-drills with live keys/sec).
 - **In-Level Guidance**: Every level displays a **What To Do** briefing, key hints (`Tab` to expand full lesson/keys, `Ctrl+L` for walkthrough & hint), live side-by-side **Target Buffer** diff (`✓` / `≠`), and a live **Keystrokes** tape.
+- **Built-In Update Checker**: Checks GitHub Releases in the background on startup and prompts on the Home screen (`[Y] Yes` / `[N] No`) to download and install newer versions automatically (or run `vimlearn --update`).
 
 ## CLI Shortcuts
 ```text
@@ -48,7 +49,12 @@ vimlearn --tutorial              # Open interactive Vim primer tutorial
 vimlearn --list                  # List all difficulties and levels
 vimlearn --play <diff> <num>     # Jump straight into a level (e.g. --play hard 2)
 vimlearn --endless <diff> [mode] # Play Endless mode (modes: random, multi, hunt, rapid)
+vimlearn --update                # Check GitHub Releases and self-update
+vimlearn --man                   # Print manual page (or: man vimlearn on Linux/macOS)
+vimlearn --version               # Print installed version
 ```
+
+Inside the app, press **`?`** on any menu or type **`:help`** while playing to open the Help & Keybindings reference. On Linux/macOS, `install.sh` also installs the man page (`man vimlearn`).
 
 ## Build From Source
 ```sh

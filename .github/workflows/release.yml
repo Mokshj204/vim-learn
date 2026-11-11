@@ -28,12 +28,15 @@ jobs:
       - name: Build cross-platform binaries
         run: |
           mkdir -p dist
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-windows-amd64.exe .
-          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-windows-arm64.exe .
-          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-linux-arm64 .
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-darwin-amd64 .
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/vimlearn-darwin-arm64 .
+          TAG="${GITHUB_REF_NAME}"
+          LDFLAGS="-s -w -X vimlearn/internal/updater.Version=${TAG}"
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-windows-amd64.exe .
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-windows-arm64.exe .
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-linux-arm64 .
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-darwin-amd64 .
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/vimlearn-darwin-arm64 .
+          cp docs/vimlearn.1 dist/vimlearn.1
           (cd dist && sha256sum vimlearn-* > checksums.txt)
 
       - name: Publish GitHub Release
