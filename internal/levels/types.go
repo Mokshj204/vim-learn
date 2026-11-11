@@ -72,3 +72,56 @@ type TutorialLesson struct {
 	Keys    []KeyHint
 	Example string
 }
+
+// EndlessMode identifies a gameplay sub-mode inside Endless Muscle-Memory Mode.
+type EndlessMode string
+
+const (
+	EndlessMultiEdit EndlessMode = "multi"
+	EndlessCodeHunt  EndlessMode = "hunt"
+	EndlessRapid     EndlessMode = "rapid"
+	EndlessRandom    EndlessMode = "random"
+)
+
+// EndlessModeInfo describes an Endless Mode option in the mode picker.
+type EndlessModeInfo struct {
+	ID          EndlessMode
+	Name        string
+	Tagline     string
+	Description string
+	ColorCode   int
+}
+
+// EndlessModes returns all selectable Endless sub-modes in display order.
+func EndlessModes() []EndlessModeInfo {
+	return []EndlessModeInfo{
+		{
+			ID:          EndlessRandom,
+			Name:        "Random Mix",
+			Tagline:     "Shuffled game modes every round (Recommended)",
+			Description: "Alternates between Multi-Edit Mix, Code Hunt, and Rapid-Fire Bursts using an anti-repeat bag so no two rounds feel the same.",
+			ColorCode:   213,
+		},
+		{
+			ID:          EndlessMultiEdit,
+			Name:        "Multi-Edit Mix",
+			Tagline:     "Composable multi-step edits on real code & configs",
+			Description: "Combines 1 to 3+ random mutations across realistic snippets with varied cursor starts and streak escalation.",
+			ColorCode:   39,
+		},
+		{
+			ID:          EndlessCodeHunt,
+			Name:        "Code Hunt",
+			Tagline:     "High-speed navigation across real code landmarks",
+			Description: "Jump between highlighted identifiers and delimiters inside realistic code blocks instead of blank grids.",
+			ColorCode:   46,
+		},
+		{
+			ID:          EndlessRapid,
+			Name:        "Rapid-Fire Chain",
+			Tagline:     "Continuous Monkeytype-style micro-drills on a live buffer",
+			Description: "Hit one target and the next lights up immediately on the same buffer. Tracks chain streak and Keys/sec!",
+			ColorCode:   220,
+		},
+	}
+}

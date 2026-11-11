@@ -38,6 +38,7 @@ vimlearn
   - **Expert**: Visual mode (`v V ~ r`), `ct`/`dt`, block indent (`>>`, `V>`), marks (`ma`, `` `a ``)
   - **Impossible** *(Timed)*: macros (`qa...q`, `@a`), named registers (`"a`), nested text objects, search + dot blitz
 - **Choose Any Difficulty & Any Level**: Jump straight to any difficulty or level, view saved star ratings (`★★★`) and best keystroke counts, and replay for Par.
+- **Endless Muscle-Memory Mode (`[E]`)**: Pick any difficulty and choose from 4 training modes—**Random Mix** (rotates modes every round), **Multi-Edit Mix** (composable multi-step code edits), **Code Hunt** (fast navigation across real code landmarks), or **Rapid-Fire Chain** (Monkeytype-style continuous micro-drills with live keys/sec).
 - **In-Level Guidance**: Every level displays a **What To Do** briefing, key hints (`Tab` to expand full lesson/keys, `Ctrl+L` for walkthrough & hint), live side-by-side **Target Buffer** diff (`✓` / `≠`), and a live **Keystrokes** tape.
 
 ## CLI Shortcuts
@@ -46,6 +47,7 @@ vimlearn                         # Open interactive menu (difficulties, levels &
 vimlearn --tutorial              # Open interactive Vim primer tutorial
 vimlearn --list                  # List all difficulties and levels
 vimlearn --play <diff> <num>     # Jump straight into a level (e.g. --play hard 2)
+vimlearn --endless <diff> [mode] # Play Endless mode (modes: random, multi, hunt, rapid)
 ```
 
 ## Build From Source

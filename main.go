@@ -16,13 +16,15 @@ func main() {
 	listFlag := flag.Bool("list", false, "List all difficulties and levels")
 	tutorialFlag := flag.Bool("tutorial", false, "Start directly in the interactive Vim tutorial")
 	playFlag := flag.Bool("play", false, "Jump straight to a difficulty and level: vimlearn --play <difficulty> <level>")
+	endlessFlag := flag.String("endless", "", "Start Endless mode for a difficulty: --endless <diff> [random|multi|hunt|rapid]")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "vimlearn — Interactive ANSI Terminal Vim Learning Game\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
 		fmt.Fprintf(os.Stderr, "  vimlearn                         Open interactive menu (difficulties, levels & tutorials)\n")
 		fmt.Fprintf(os.Stderr, "  vimlearn --tutorial              Open interactive Vim primer tutorial\n")
 		fmt.Fprintf(os.Stderr, "  vimlearn --list                  List all difficulties and levels\n")
-		fmt.Fprintf(os.Stderr, "  vimlearn --play <diff> <num>     Start a specific level (e.g. --play intermediate 2)\n\n")
+		fmt.Fprintf(os.Stderr, "  vimlearn --play <diff> <num>     Start a specific level (e.g. --play intermediate 2)\n")
+		fmt.Fprintf(os.Stderr, "  vimlearn --endless <diff> [mode] Start Endless mode (modes: random, multi, hunt, rapid)\n\n")
 		fmt.Fprintf(os.Stderr, "Difficulties: beginner, intermediate, hard, expert, impossible\n")
 	}
 	flag.Parse()
@@ -37,6 +39,16 @@ func main() {
 
 	if *tutorialFlag {
 		app.OpenTutorial()
+	} else if *endlessFlag != "" {
+		diff := levels.DifficultyID(strings.ToLower(*endlessFlag))
+		mode := levels.EndlessRandom
+		if args := flag.Args(); len(args) > 0 {
+			mode = levels.EndlessMode(strings.ToLower(args[0]))
+		}
+		if err := app.StartEndlessMode(diff, mode); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	} else if *playFlag {
 		args := flag.Args()
 		if len(args) < 2 {

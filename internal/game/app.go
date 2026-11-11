@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"time"
 
 	"vimlearn/internal/levels"
@@ -24,6 +25,7 @@ const (
 	ScreenHome Screen = iota
 	ScreenTutorial
 	ScreenLevels
+	ScreenEndlessMenu
 	ScreenPlay
 	ScreenWin
 	ScreenTimeout
@@ -34,11 +36,12 @@ type App struct {
 	term     term.Terminal
 	progress *store.Progress
 
-	screen   Screen
-	homeIdx  int // 0 = Tutorial, 1..5 = Difficulties
-	tutIdx   int
-	selDiff  levels.DifficultyID
-	levelIdx int
+	screen         Screen
+	homeIdx        int // 0 = Tutorial, 1..5 = Difficulties
+	tutIdx         int
+	selDiff        levels.DifficultyID
+	levelIdx       int
+	endlessMenuIdx int
 
 	currentLevel  levels.Level
 	eng           *vim.Engine
@@ -47,6 +50,18 @@ type App struct {
 	showHint      bool
 	showSolution  bool
 	levelStart    time.Time
+
+	endlessMode         bool
+	endlessSelectedMode levels.EndlessMode
+	endlessActiveMode   levels.EndlessMode
+	endlessBag          []levels.EndlessMode
+	endlessStreak       int
+	rapidStep           int
+	rapidBurstDone      int
+	rapidBurstTotal     int
+	rapidTotalKeys      int
+	rapidStart          time.Time
+	rng                 *rand.Rand
 }
 
 // NewApp constructs a new game application.
@@ -57,6 +72,7 @@ func NewApp(t term.Terminal) *App {
 		screen:   ScreenHome,
 		homeIdx:  1,
 		selDiff:  levels.DiffBeginner,
+		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -66,10 +82,106 @@ func (a *App) OpenLevel(diff levels.DifficultyID, num int) error {
 	if !ok {
 		return fmt.Errorf("level %s #%d not found", diff, num)
 	}
+	a.endlessMode = false
 	a.selDiff = diff
 	a.levelIdx = num - 1
 	a.startLevel(lv)
 	return nil
+}
+
+// StartEndless begins an indefinite procedural muscle-memory run in Random Mix mode.
+func (a *App) StartEndless(diff levels.DifficultyID) error {
+	return a.StartEndlessMode(diff, levels.EndlessRandom)
+}
+
+// StartEndlessMode begins an indefinite run for a difficulty and Endless sub-mode.
+func (a *App) StartEndlessMode(diff levels.DifficultyID, mode levels.EndlessMode) error {
+	if _, ok := levels.DifficultyByID(diff); !ok {
+		return fmt.Errorf("unknown difficulty %q", diff)
+	}
+	switch mode {
+	case "", levels.EndlessRandom:
+		mode = levels.EndlessRandom
+	case levels.EndlessMultiEdit, levels.EndlessCodeHunt, levels.EndlessRapid:
+	default:
+		return fmt.Errorf("unknown endless mode %q (use random, multi, hunt, or rapid)", mode)
+	}
+	a.selDiff = diff
+	a.endlessMode = true
+	a.endlessSelectedMode = mode
+	a.endlessActiveMode = ""
+	a.endlessBag = nil
+	a.endlessStreak = 0
+	a.rapidStep = 0
+	a.rapidTotalKeys = 0
+	a.rapidStart = time.Now()
+	a.nextEndlessRound()
+	return nil
+}
+
+func (a *App) drawBagMode() levels.EndlessMode {
+	if len(a.endlessBag) == 0 {
+		a.endlessBag = []levels.EndlessMode{
+			levels.EndlessMultiEdit,
+			levels.EndlessCodeHunt,
+			levels.EndlessRapid,
+		}
+		a.rng.Shuffle(len(a.endlessBag), func(i, j int) {
+			a.endlessBag[i], a.endlessBag[j] = a.endlessBag[j], a.endlessBag[i]
+		})
+		// Avoid repeating the previous mode across bag boundary
+		if a.endlessActiveMode != "" && a.endlessBag[0] == a.endlessActiveMode && len(a.endlessBag) > 1 {
+			a.endlessBag[0], a.endlessBag[1] = a.endlessBag[1], a.endlessBag[0]
+		}
+	}
+	picked := a.endlessBag[0]
+	a.endlessBag = a.endlessBag[1:]
+	return picked
+}
+
+func (a *App) nextEndlessRound() {
+	mode := a.endlessSelectedMode
+	if mode == levels.EndlessRandom {
+		mode = a.drawBagMode()
+	}
+	a.endlessActiveMode = mode
+
+	if mode == levels.EndlessRapid {
+		a.rapidStep = 1
+		a.rapidBurstDone = 0
+		if a.endlessSelectedMode == levels.EndlessRandom {
+			a.rapidBurstTotal = 1
+		} else {
+			a.rapidBurstTotal = 0 // infinite continuous chain
+		}
+		lv := levels.GenerateRapidStep(a.selDiff, a.rapidStep, "", vim.Position{}, a.rng)
+		a.startLevel(lv)
+		return
+	}
+
+	lv := levels.GenerateEndlessForMode(a.selDiff, mode, a.endlessStreak+1, a.rng)
+	a.startLevel(lv)
+}
+
+func (a *App) applyNextRapidStep(flashMsg string) {
+	a.rapidStep++
+	curText := a.eng.Text()
+	curCursor := a.eng.Cursor
+	lv := levels.GenerateRapidStep(a.selDiff, a.rapidStep, curText, curCursor, a.rng)
+	a.startLevel(lv)
+	a.eng.StatusMsg = flashMsg
+}
+
+func (a *App) rapidKPS() float64 {
+	elapsed := time.Since(a.rapidStart).Seconds()
+	if elapsed < 0.5 {
+		elapsed = 0.5
+	}
+	total := a.rapidTotalKeys
+	if a.eng != nil {
+		total += a.eng.KeyCount
+	}
+	return float64(total) / elapsed
 }
 
 // OpenTutorial starts on the interactive Vim tutorial screen.
@@ -190,6 +302,8 @@ func (a *App) handleEvent(ev term.KeyEvent) (quit bool) {
 		a.handleTutorialKey(ev)
 	case ScreenLevels:
 		a.handleLevelSelectKey(ev)
+	case ScreenEndlessMenu:
+		a.handleEndlessMenuKey(ev)
 	case ScreenPlay:
 		a.handlePlayKey(ev)
 	case ScreenWin:
@@ -238,6 +352,13 @@ func (a *App) handleHomeKey(ev term.KeyEvent) bool {
 			}
 		case 't', 'T':
 			a.screen = ScreenTutorial
+		case 'e', 'E':
+			if a.homeIdx >= 1 {
+				diffs := levels.Difficulties()
+				a.selDiff = diffs[a.homeIdx-1].ID
+				a.endlessMenuIdx = 0
+				a.screen = ScreenEndlessMenu
+			}
 		case '1', '2', '3', '4', '5':
 			idx := int(ev.Rune - '1')
 			diffs := levels.Difficulties()
@@ -303,6 +424,7 @@ func (a *App) handleLevelSelectKey(ev term.KeyEvent) {
 		}
 	case term.KeyEnter:
 		if a.levelIdx >= 0 && a.levelIdx < len(dLevels) {
+			a.endlessMode = false
 			a.startLevel(dLevels[a.levelIdx])
 		}
 	case term.KeyCtrl:
@@ -323,11 +445,58 @@ func (a *App) handleLevelSelectKey(ev term.KeyEvent) {
 			}
 		case 't', 'T':
 			a.screen = ScreenTutorial
+		case 'e', 'E':
+			a.endlessMenuIdx = 0
+			a.screen = ScreenEndlessMenu
 		case '1', '2', '3', '4', '5':
 			idx := int(ev.Rune - '1')
 			if idx >= 0 && idx < len(dLevels) {
+				a.endlessMode = false
 				a.levelIdx = idx
 				a.startLevel(dLevels[idx])
+			}
+		}
+	}
+}
+
+func (a *App) handleEndlessMenuKey(ev term.KeyEvent) {
+	modes := levels.EndlessModes()
+	switch ev.Kind {
+	case term.KeyEsc:
+		a.screen = ScreenLevels
+	case term.KeyUp:
+		if a.endlessMenuIdx > 0 {
+			a.endlessMenuIdx--
+		}
+	case term.KeyDown:
+		if a.endlessMenuIdx < len(modes)-1 {
+			a.endlessMenuIdx++
+		}
+	case term.KeyEnter:
+		if a.endlessMenuIdx >= 0 && a.endlessMenuIdx < len(modes) {
+			_ = a.StartEndlessMode(a.selDiff, modes[a.endlessMenuIdx].ID)
+		}
+	case term.KeyCtrl:
+		if ev.Ctrl == 'c' {
+			a.screen = ScreenLevels
+		}
+	case term.KeyRune:
+		switch ev.Rune {
+		case 'q', 'b':
+			a.screen = ScreenLevels
+		case 'k':
+			if a.endlessMenuIdx > 0 {
+				a.endlessMenuIdx--
+			}
+		case 'j':
+			if a.endlessMenuIdx < len(modes)-1 {
+				a.endlessMenuIdx++
+			}
+		case '1', '2', '3', '4':
+			idx := int(ev.Rune - '1')
+			if idx >= 0 && idx < len(modes) {
+				a.endlessMenuIdx = idx
+				_ = a.StartEndlessMode(a.selDiff, modes[idx].ID)
 			}
 		}
 	}
@@ -355,6 +524,7 @@ func (a *App) handlePlayKey(ev term.KeyEvent) {
 	a.eng.HandleKey(ev)
 
 	if a.eng.QuitRequested {
+		a.endlessMode = false
 		a.screen = ScreenLevels
 		return
 	}
@@ -369,33 +539,58 @@ func (a *App) handlePlayKey(ev term.KeyEvent) {
 			a.eng.Cursor == a.currentLevel.Checkpoints[a.checkpointIdx] {
 			a.checkpointIdx++
 			if a.checkpointIdx >= len(a.currentLevel.Checkpoints) {
-				a.progress.RecordWin(a.currentLevel.ID, a.eng.KeyCount, a.currentLevel.Par)
-				a.screen = ScreenWin
+				a.recordWin()
 			} else {
 				a.eng.StatusMsg = fmt.Sprintf("Checkpoint %d/%d reached!", a.checkpointIdx, len(a.currentLevel.Checkpoints))
 			}
 		}
 	} else if a.eng.Text() == a.currentLevel.TargetText {
-		a.progress.RecordWin(a.currentLevel.ID, a.eng.KeyCount, a.currentLevel.Par)
-		a.screen = ScreenWin
+		a.recordWin()
 	}
+}
+
+func (a *App) recordWin() {
+	if a.endlessMode {
+		a.endlessStreak++
+		a.progress.RecordEndlessStreak(string(a.selDiff), a.endlessStreak)
+		a.progress.RecordEndlessStreak(string(a.selDiff)+":"+string(a.endlessSelectedMode), a.endlessStreak)
+
+		if a.endlessActiveMode == levels.EndlessRapid {
+			a.rapidTotalKeys += a.eng.KeyCount
+			if a.rapidBurstTotal > 0 {
+				a.rapidBurstDone++
+				if a.rapidBurstDone < a.rapidBurstTotal {
+					a.applyNextRapidStep(fmt.Sprintf("✓ Burst %d/%d cleared! Next target...", a.rapidBurstDone, a.rapidBurstTotal))
+					return
+				}
+			} else {
+				a.applyNextRapidStep(fmt.Sprintf("✓ +1! Chain: %d  (%.1f keys/s)", a.endlessStreak, a.rapidKPS()))
+				return
+			}
+		}
+	} else {
+		a.progress.RecordWin(a.currentLevel.ID, a.eng.KeyCount, a.currentLevel.Par)
+	}
+	a.screen = ScreenWin
 }
 
 func (a *App) handleWinKey(ev term.KeyEvent) {
 	switch ev.Kind {
 	case term.KeyEsc:
+		a.endlessMode = false
 		a.screen = ScreenLevels
 	case term.KeyEnter:
 		a.advanceNextLevel()
 	case term.KeyRune:
 		switch ev.Rune {
-		case 'n':
+		case 'n', ' ':
 			a.advanceNextLevel()
 		case 'r':
 			a.startLevel(a.currentLevel)
 		case 's':
 			a.showSolution = !a.showSolution
 		case 'l', 'q':
+			a.endlessMode = false
 			a.screen = ScreenLevels
 		}
 	}
@@ -404,20 +599,34 @@ func (a *App) handleWinKey(ev term.KeyEvent) {
 func (a *App) handleTimeoutKey(ev term.KeyEvent) {
 	switch ev.Kind {
 	case term.KeyEsc:
+		a.endlessMode = false
 		a.screen = ScreenLevels
 	case term.KeyEnter:
-		a.startLevel(a.currentLevel)
+		if a.endlessMode {
+			_ = a.StartEndlessMode(a.selDiff, a.endlessSelectedMode)
+		} else {
+			a.startLevel(a.currentLevel)
+		}
 	case term.KeyRune:
 		switch ev.Rune {
 		case 'r':
-			a.startLevel(a.currentLevel)
+			if a.endlessMode {
+				_ = a.StartEndlessMode(a.selDiff, a.endlessSelectedMode)
+			} else {
+				a.startLevel(a.currentLevel)
+			}
 		case 'l', 'q':
+			a.endlessMode = false
 			a.screen = ScreenLevels
 		}
 	}
 }
 
 func (a *App) advanceNextLevel() {
+	if a.endlessMode {
+		a.nextEndlessRound()
+		return
+	}
 	dLevels := levels.ByDifficulty(a.selDiff)
 	if a.levelIdx+1 < len(dLevels) {
 		a.levelIdx++

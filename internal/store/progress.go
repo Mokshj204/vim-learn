@@ -13,9 +13,10 @@ type LevelRecord struct {
 	Stars     int  `json:"stars"`
 }
 
-// Progress holds saved progress across all levels.
+// Progress holds saved progress across all levels and endless mode high scores.
 type Progress struct {
-	Levels map[string]LevelRecord `json:"levels"`
+	Levels      map[string]LevelRecord `json:"levels"`
+	EndlessBest map[string]int         `json:"endless_best,omitempty"`
 }
 
 // StarsForScore computes a 1-3 star rating relative to Par.
@@ -43,7 +44,10 @@ func progressPath() (string, error) {
 
 // Load reads saved progress from disk, returning empty Progress if missing.
 func Load() *Progress {
-	p := &Progress{Levels: make(map[string]LevelRecord)}
+	p := &Progress{
+		Levels:      make(map[string]LevelRecord),
+		EndlessBest: make(map[string]int),
+	}
 	path, err := progressPath()
 	if err != nil {
 		return p
@@ -56,7 +60,18 @@ func Load() *Progress {
 	if p.Levels == nil {
 		p.Levels = make(map[string]LevelRecord)
 	}
+	if p.EndlessBest == nil {
+		p.EndlessBest = make(map[string]int)
+	}
 	return p
+}
+
+// RecordEndlessStreak updates the best endless streak for a difficulty if beaten.
+func (p *Progress) RecordEndlessStreak(diff string, streak int) {
+	if streak > p.EndlessBest[diff] {
+		p.EndlessBest[diff] = streak
+		_ = p.Save()
+	}
 }
 
 // RecordWin updates best score and stars for levelID and persists to disk.

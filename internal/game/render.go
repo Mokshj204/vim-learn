@@ -175,6 +175,8 @@ func (a *App) render() string {
 		a.renderTutorial(c)
 	case ScreenLevels:
 		a.renderLevelSelect(c)
+	case ScreenEndlessMenu:
+		a.renderEndlessMenu(c)
 	case ScreenPlay, ScreenWin, ScreenTimeout:
 		a.renderPlay(c)
 	}
@@ -269,7 +271,12 @@ func (a *App) renderHome(c *screenCanvas) {
 		}
 
 		leftPart := fmt.Sprintf("[%d] %-13s  %s", i+1, d.Name, d.Tagline)
-		rightPart := fmt.Sprintf("%d/%d done  %2d/%2d ★", dDone, len(dLevels), dStars, len(dLevels)*3)
+		bestStreak := a.progress.EndlessBest[string(d.ID)]
+		streakTag := ""
+		if bestStreak > 0 {
+			streakTag = fmt.Sprintf("  Endless:%d", bestStreak)
+		}
+		rightPart := fmt.Sprintf("%d/%d done  %2d/%2d ★%s", dDone, len(dLevels), dStars, len(dLevels)*3, streakTag)
 		availLeft := innerW - 3 - utf8.RuneCountInString(rightPart) - 2
 		if availLeft < 16 {
 			availLeft = 16
@@ -285,10 +292,13 @@ func (a *App) renderHome(c *screenCanvas) {
 		}
 	}
 	c.next("  " + term.FgBrightWhite + boxBottom(boxW) + term.Reset)
+	c.next("")
+	endlessCallout := "[E] Press 'e' on any difficulty for Endless Muscle-Memory Mode (Random Mix, Multi-Edit, Code Hunt, Rapid-Fire)"
+	c.next("  " + term.Bold + term.Bg256(23) + term.FgBrightCyan + " ★ " + fitWidth(endlessCallout, boxW-3) + term.Reset)
 
 	// Fill remaining space before footer
 	c.fillTo(rows)
-	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Open Difficulty   1-5: Quick Jump   t: Tutorial   q: Quit"))
+	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Open Difficulty   e: Endless Mode   1-5: Quick Jump   t: Tutorial   q: Quit"))
 }
 
 func (a *App) renderTutorial(c *screenCanvas) {
@@ -365,6 +375,12 @@ func (a *App) renderLevelSelect(c *screenCanvas) {
 
 	boxW := cols - 4
 	innerW := boxW - 4
+
+	endlessBest := a.progress.EndlessBest[string(a.selDiff)]
+	endlessLine := fmt.Sprintf("[E] Endless Muscle-Memory Mode — Infinite generated %s drills (Best Streak: %d)", diff.Name, endlessBest)
+	c.next("  " + term.Bold + term.Bg256(23) + term.FgBrightCyan + " ★ " + fitWidth(endlessLine, boxW-3) + term.Reset)
+	c.next("")
+
 	c.next("  " + term.Fg256(diff.ColorCode) + boxTop(boxW, "Select Any Level") + term.Reset)
 
 	for i, lv := range dLevels {
@@ -420,7 +436,68 @@ func (a *App) renderLevelSelect(c *screenCanvas) {
 	}
 
 	c.fillTo(rows)
-	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Select   Enter: Start Level   1-5: Quick Play   t: Tutorial   Esc/b: Difficulties"))
+	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Select   Enter: Start Level   e: Endless Mode   1-5: Quick Play   t: Tutorial   Esc/b: Difficulties"))
+}
+
+func (a *App) renderEndlessMenu(c *screenCanvas) {
+	cols, rows := c.cols, c.rows
+	diff, _ := levels.DifficultyByID(a.selDiff)
+	modes := levels.EndlessModes()
+	if a.endlessMenuIdx >= len(modes) {
+		a.endlessMenuIdx = 0
+	}
+
+	c.next(renderTopBar(cols, "ENDLESS MUSCLE-MEMORY MODE — "+strings.ToUpper(diff.Name), "Choose Game Mode"))
+	c.next("  " + term.Dim + fitWidth("Pick a training mode below, or choose Random Mix to rotate modes every round.", cols-4) + term.Reset)
+	c.next("")
+
+	boxW := cols - 4
+	innerW := boxW - 4
+	c.next("  " + term.FgBrightCyan + boxTop(boxW, "Endless Game Modes") + term.Reset)
+
+	for i, m := range modes {
+		selected := i == a.endlessMenuIdx
+		prefix := "   "
+		rowStyle := ""
+		if selected {
+			prefix = term.Bold + term.FgBrightYellow + " ▶ "
+			rowStyle = term.Bg256(237)
+		}
+		best := a.progress.EndlessBest[string(a.selDiff)+":"+string(m.ID)]
+		right := fmt.Sprintf("Best Streak: %d", best)
+		left := fmt.Sprintf("[%d] %-18s  %s", i+1, m.Name, m.Tagline)
+		availLeft := innerW - 3 - utf8.RuneCountInString(right) - 2
+		if availLeft < 20 {
+			availLeft = 20
+		}
+		rowLine := fitWidth(left, availLeft) + "  " + right
+		c.next("  │ " + prefix + rowStyle + term.Bold + term.Fg256(m.ColorCode) + fitWidth(rowLine, innerW-3) + term.Reset + " │")
+		if selected {
+			for _, dl := range wrapText(m.Description, innerW-6) {
+				c.next("  │ " + strings.Repeat(" ", 6) + term.Dim + fitWidth(dl, innerW-6) + term.Reset + " │")
+			}
+		}
+	}
+	for c.row < rows-2 {
+		c.next("  │ " + strings.Repeat(" ", innerW) + " │")
+	}
+	c.next("  " + term.FgBrightCyan + boxBottom(boxW) + term.Reset)
+
+	c.fillTo(rows)
+	c.putRow(rows, renderFooterBar(cols, "j/k or ↑/↓: Move   Enter: Start Endless   1-4: Quick Launch   Esc/b: Back to Levels"))
+}
+
+func endlessModeLabel(m levels.EndlessMode) string {
+	switch m {
+	case levels.EndlessMultiEdit:
+		return "MULTI-EDIT"
+	case levels.EndlessCodeHunt:
+		return "CODE HUNT"
+	case levels.EndlessRapid:
+		return "RAPID-FIRE"
+	default:
+		return "ENDLESS"
+	}
 }
 
 func (a *App) renderPlay(c *screenCanvas) {
@@ -447,8 +524,27 @@ func (a *App) renderPlay(c *screenCanvas) {
 	if a.eng.RecordingMacro != 0 {
 		macroBadge = term.Bold + term.BgRed + term.FgBrightWhite + " REC @" + string(a.eng.RecordingMacro) + " " + term.Reset + " "
 	}
-	headerLeft := fmt.Sprintf(" %s %s%s L%d: %s%s", modeBadge, term.Bold+term.Fg256(diff.ColorCode), diff.Name, lv.Number, lv.Title, term.Reset)
-	headerRight := fmt.Sprintf("%sKeys: %s%d%s / Par %d%s ", macroBadge, parColor+term.Bold, a.eng.KeyCount, term.Reset, lv.Par, timerText)
+	endlessBadge := ""
+	streakRight := ""
+	if a.endlessMode {
+		label := endlessModeLabel(a.endlessActiveMode)
+		if a.endlessSelectedMode == levels.EndlessRandom {
+			label = "RANDOM:" + label
+		}
+		if a.endlessActiveMode == levels.EndlessRapid && a.rapidBurstTotal > 1 {
+			label = fmt.Sprintf("%s %d/%d", label, a.rapidBurstDone+1, a.rapidBurstTotal)
+		}
+		endlessBadge = term.Bold + term.Bg256(23) + term.FgBrightCyan + " " + label + " " + term.Reset + " "
+		bestKey := string(a.selDiff) + ":" + string(a.endlessSelectedMode)
+		best := a.progress.EndlessBest[bestKey]
+		kpsText := ""
+		if a.endlessActiveMode == levels.EndlessRapid {
+			kpsText = fmt.Sprintf(" | %.1f k/s", a.rapidKPS())
+		}
+		streakRight = fmt.Sprintf("  |  Streak: %s%d%s (Best %d%s)", term.Bold+term.FgBrightCyan, a.endlessStreak, term.Reset, best, kpsText)
+	}
+	headerLeft := fmt.Sprintf(" %s %s%s%s L%d: %s%s", modeBadge, endlessBadge, term.Bold+term.Fg256(diff.ColorCode), diff.Name, lv.Number, lv.Title, term.Reset)
+	headerRight := fmt.Sprintf("%sKeys: %s%d%s / Par %d%s%s ", macroBadge, parColor+term.Bold, a.eng.KeyCount, term.Reset, lv.Par, streakRight, timerText)
 	c.next(headerLeft + "   " + headerRight)
 
 	// Briefing Box spanning full terminal width
@@ -533,12 +629,24 @@ func (a *App) renderPlay(c *screenCanvas) {
 	switch a.screen {
 	case ScreenWin:
 		a.renderWinBanner(c, statusRow+2, boxW)
-		c.putRow(rows, renderFooterBar(cols, "Enter / n: Next Level   r: Retry for Par   s: Toggle Optimal Solution   Esc / l: Level Select"))
+		if a.endlessMode {
+			c.putRow(rows, renderFooterBar(cols, "Enter / Space / n: Next Endless Round   r: Retry Round   s: Optimal Solution   Esc / q: Stop Endless"))
+		} else {
+			c.putRow(rows, renderFooterBar(cols, "Enter / n: Next Level   r: Retry for Par   s: Toggle Optimal Solution   Esc / l: Level Select"))
+		}
 	case ScreenTimeout:
 		a.renderTimeoutBanner(c, statusRow+2, boxW)
-		c.putRow(rows, renderFooterBar(cols, "Enter / r: Retry Level   Esc / l: Level Select"))
+		if a.endlessMode {
+			c.putRow(rows, renderFooterBar(cols, "Enter / r: New Endless Run   Esc / q: Stop Endless"))
+		} else {
+			c.putRow(rows, renderFooterBar(cols, "Enter / r: Retry Level   Esc / l: Level Select"))
+		}
 	default:
-		c.putRow(rows, renderFooterBar(cols, "Tab: Expand Lesson/Keys   Ctrl+L: Walkthrough/Hint   :reset: Restart   :q: Level Select"))
+		if a.endlessMode {
+			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Keys   Ctrl+L: Hint   :reset: Restart Round   :q: Stop Endless Mode"))
+		} else {
+			c.putRow(rows, renderFooterBar(cols, "Tab: Expand Lesson/Keys   Ctrl+L: Walkthrough/Hint   :reset: Restart   :q: Level Select"))
+		}
 	}
 	c.row = rows + 1
 }
@@ -710,11 +818,17 @@ func (a *App) renderWinBanner(c *screenCanvas, startRow, boxW int) {
 	lv := a.currentLevel
 	stars := store.StarsForScore(a.eng.KeyCount, lv.Par)
 	innerW := boxW - 4
-	plainMsg := fmt.Sprintf("Nice work!  Keys: %d (Par %d)   Rating: %s", a.eng.KeyCount, lv.Par, starsPlain(stars))
+	title := "LEVEL COMPLETE!"
+	lead := "Nice work!"
+	if a.endlessMode {
+		title = fmt.Sprintf("ROUND CLEARED! (Streak: %d)", a.endlessStreak)
+		lead = fmt.Sprintf("Streak: %d (Best %d)", a.endlessStreak, a.progress.EndlessBest[string(a.selDiff)])
+	}
+	plainMsg := fmt.Sprintf("%s  Keys: %d (Par %d)   Rating: %s", lead, a.eng.KeyCount, lv.Par, starsPlain(stars))
 	pad := maxZero(innerW - utf8.RuneCountInString(plainMsg))
-	c.putRow(startRow, "  "+term.Bold+term.FgBrightGreen+boxTop(boxW, "LEVEL COMPLETE!")+term.Reset)
+	c.putRow(startRow, "  "+term.Bold+term.FgBrightGreen+boxTop(boxW, title)+term.Reset)
 	c.putRow(startRow+1, fmt.Sprintf("  │ %s  Keys: %s%d%s (Par %d)   Rating: %s%s │",
-		term.Bold+term.FgBrightWhite+"Nice work!"+term.Reset,
+		term.Bold+term.FgBrightWhite+lead+term.Reset,
 		term.Bold+term.FgBrightCyan, a.eng.KeyCount, term.Reset,
 		lv.Par,
 		starsString(stars),
@@ -731,8 +845,14 @@ func (a *App) renderWinBanner(c *screenCanvas, startRow, boxW int) {
 
 func (a *App) renderTimeoutBanner(c *screenCanvas, startRow, boxW int) {
 	innerW := boxW - 4
-	c.putRow(startRow, "  "+term.Bold+term.FgBrightRed+boxTop(boxW, "TIME'S UP!")+term.Reset)
-	c.putRow(startRow+1, "  │ "+term.FgBrightWhite+fitWidth("The Impossible countdown reached 0s. Try again!", innerW)+term.Reset+" │")
+	title := "TIME'S UP!"
+	msg := "The Impossible countdown reached 0s. Try again!"
+	if a.endlessMode {
+		title = "STREAK ENDED!"
+		msg = fmt.Sprintf("Time's up! Final Streak: %d (Best: %d)", a.endlessStreak, a.progress.EndlessBest[string(a.selDiff)])
+	}
+	c.putRow(startRow, "  "+term.Bold+term.FgBrightRed+boxTop(boxW, title)+term.Reset)
+	c.putRow(startRow+1, "  │ "+term.FgBrightWhite+fitWidth(msg, innerW)+term.Reset+" │")
 	c.putRow(startRow+2, "  "+term.Bold+term.FgBrightRed+boxBottom(boxW)+term.Reset)
 }
 
