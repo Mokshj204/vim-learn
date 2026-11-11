@@ -630,9 +630,9 @@ func (a *App) renderPlay(c *screenCanvas) {
 	case ScreenWin:
 		a.renderWinBanner(c, statusRow+2, boxW)
 		if a.endlessMode {
-			c.putRow(rows, renderFooterBar(cols, "Enter / Space / n: Next Endless Round   r: Retry Round   s: Optimal Solution   Esc / q: Stop Endless"))
+			c.putRow(rows, renderFooterBar(cols, "Enter / Space / n: Next Endless Round   r: Retry Round   s: Optimal Solution   l / q: Stop Endless"))
 		} else {
-			c.putRow(rows, renderFooterBar(cols, "Enter / n: Next Level   r: Retry for Par   s: Toggle Optimal Solution   Esc / l: Level Select"))
+			c.putRow(rows, renderFooterBar(cols, "Enter / n: Next Level   r: Retry for Par   s: Toggle Optimal Solution   l / q: Level Select"))
 		}
 	case ScreenTimeout:
 		a.renderTimeoutBanner(c, statusRow+2, boxW)

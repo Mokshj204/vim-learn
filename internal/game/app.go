@@ -577,8 +577,8 @@ func (a *App) recordWin() {
 func (a *App) handleWinKey(ev term.KeyEvent) {
 	switch ev.Kind {
 	case term.KeyEsc:
-		a.endlessMode = false
-		a.screen = ScreenLevels
+		// Ignore <Esc> on the win screen so players reflexively exiting Insert mode don't dismiss it.
+		return
 	case term.KeyEnter:
 		a.advanceNextLevel()
 	case term.KeyRune:

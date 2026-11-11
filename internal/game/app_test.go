@@ -222,24 +222,26 @@ func TestEndlessModeFlow(t *testing.T) {
 		t.Fatalf("expected Rapid-Fire to stay on ScreenPlay and advance to step 2, got screen=%v streak=%d step=%d", app.screen, app.endlessStreak, app.rapidStep)
 	}
 
-	// Test Random Mix anti-repeat bag never picks same mode twice in a row,
-	// and switches immediately after solving each round (including Rapid-Fire).
-	if err := app.StartEndlessMode(levels.DiffIntermediate, levels.EndlessRandom); err != nil {
-		t.Fatal(err)
-	}
-	prev := app.endlessActiveMode
-	for i := 0; i < 6; i++ {
-		for _, ev := range vimKeys(app.currentLevel.OptimalSeq) {
-			app.handleEvent(ev)
+	// Test Random Mix across all 5 difficulties: anti-repeat bag never repeats mode,
+	// and every round reaches ScreenWin even when OptimalSeq ends with <Esc>.
+	for _, d := range levels.Difficulties() {
+		if err := app.StartEndlessMode(d.ID, levels.EndlessRandom); err != nil {
+			t.Fatal(err)
 		}
-		if app.screen != ScreenWin {
-			t.Fatalf("Random Mix round %d (%v) did not reach ScreenWin after solving", i+1, prev)
+		prev := app.endlessActiveMode
+		for i := 0; i < 20; i++ {
+			for _, ev := range vimKeys(app.currentLevel.OptimalSeq) {
+				app.handleEvent(ev)
+			}
+			if app.screen != ScreenWin {
+				t.Fatalf("%s Random Mix round %d (%v, seq=%q) did not reach ScreenWin (screen=%v)", d.ID, i+1, prev, app.currentLevel.OptimalSeq, app.screen)
+			}
+			app.handleEvent(term.KeyEvent{Kind: term.KeyEnter})
+			if app.screen != ScreenPlay || app.endlessActiveMode == prev {
+				t.Fatalf("%s Random Mix repeated mode %v or failed to advance at round %d", d.ID, prev, i+1)
+			}
+			prev = app.endlessActiveMode
 		}
-		app.handleEvent(term.KeyEvent{Kind: term.KeyEnter})
-		if app.screen != ScreenPlay || app.endlessActiveMode == prev {
-			t.Fatalf("Random Mix repeated mode %v or failed to advance at round %d", prev, i+1)
-		}
-		prev = app.endlessActiveMode
 	}
 
 	// Quit endless mode back to Level Select
